@@ -1,61 +1,48 @@
 import express from "express";
-import { pool } from "./db.js";
+import { parseApplicationInput } from "./validation.js";
+import {
+  createApplication,
+  deleteApplication,
+  listApplications,
+  updateApplicationStatus,
+  updateApplicationDetails,
+} from "./applications.js";
 
 const app = express();
 app.use(express.json());
 const port = 3001;
 
-const exampleApplications = [
-  {
-    id: 1,
-    company: "Example Corp",
-    position: "Software Engineer",
-    status: "Applied",
-  },
-  {
-    id: 2,
-    company: "Another Corp",
-    position: "Product Manager",
-    status: "Interview",
-  },
-];
-
 app.get("/api/health", (_request, response) => {
   response.json({ status: "ok" });
 });
 
-app.get("/api/applications", (_request, response) => {
-  response.json(exampleApplications);
+app.get("/api/applications", async (_request, response) => {
+  try {
+    response.json(await listApplications());
+  } catch (error) {
+    console.error("Could not read applications:", error);
+    response.status(500).json({ message: "Could not load applications" });
+  }
 });
 
-app.post("/api/applications", (request, response) => {
-  const { company, position } = request.body ?? {};
-
-  if (
-    typeof company !== "string" ||
-    typeof position !== "string" ||
-    !company.trim() ||
-    !position.trim()
-  ) {
-    response.status(400).json({
-      message: "Company and position must be non-empty strings",
-    });
+app.post("/api/applications", async (request, response) => {
+  const parsed = parseApplicationInput(request.body);
+  if (!parsed.data) {
+    response.status(400).json({ message: parsed.error });
     return;
   }
 
-  const application = {
-    id: Math.max(0, ...exampleApplications.map((job) => job.id)) + 1,
-    company: company.trim(),
-    position: position.trim(),
-    status: "Applied",
-  };
-
-  exampleApplications.push(application);
-
-  response.status(201).json(application);
+  try {
+    const { company, position } = parsed.data;
+    const application = await createApplication(company, position, parsed.data);
+    response.status(201).json(application);
+  } catch (error) {
+    console.error("Could not create application:", error);
+    response.status(500).json({ message: "Could not create application" });
+  }
 });
 
-app.delete("/api/applications/:id", (request, response) => {
+app.delete("/api/applications/:id", async (request, response) => {
   const id = Number(request.params.id);
 
   if (!Number.isSafeInteger(id) || id <= 0) {
@@ -63,18 +50,20 @@ app.delete("/api/applications/:id", (request, response) => {
     return;
   }
 
-  const index = exampleApplications.findIndex((job) => job.id === id);
-
-  if (index === -1) {
-    response.status(404).json({ message: "Application not found" });
-    return;
+  try {
+    const deleted = await deleteApplication(id);
+    if (!deleted) {
+      response.status(404).json({ message: "Application not found" });
+      return;
+    }
+    response.status(204).send();
+  } catch (error) {
+    console.error("Could not delete application:", error);
+    response.status(500).json({ message: "Could not delete application" });
   }
-
-  exampleApplications.splice(index, 1);
-  response.status(204).send();
 });
 
-app.patch("/api/applications/:id", (request, response) => {
+app.patch("/api/applications/:id", async (request, response) => {
   const id = Number(request.params.id);
   const { status } = request.body ?? {};
 
@@ -90,29 +79,41 @@ app.patch("/api/applications/:id", (request, response) => {
     return;
   }
 
-  const application = exampleApplications.find((job) => job.id === id);
-
-  if (!application) {
-    response.status(404).json({ message: "Application not found" });
-    return;
+  try {
+    const application = await updateApplicationStatus(id, status);
+    if (!application) {
+      response.status(404).json({ message: "Application not found" });
+      return;
+    }
+    response.json(application);
+  } catch (error) {
+    console.error("Could not update application:", error);
+    response.status(500).json({ message: "Could not update application" });
   }
-
-  application.status = status;
-  response.json(application);
 });
 
-app.get("/api/database-applications", async (_request, response) => {
+// The details form sends all editable fields; status uses the existing PATCH route.
+app.patch('/api/applications/:id/details', async (request, response) => {
+  const id = Number(request.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    response.status(400).json({ message: 'Invalid application ID' });
+    return;
+  }
+  const parsed = parseApplicationInput(request.body);
+  if (!parsed.data) {
+    response.status(400).json({ message: parsed.error });
+    return;
+  }
   try {
-    const result = await pool.query(
-      "SELECT id, company, position, status FROM applications ORDER BY id",
-    );
-
-    response.json(result.rows);
+    const application = await updateApplicationDetails(id, parsed.data);
+    if (!application) {
+      response.status(404).json({ message: 'Application not found' });
+      return;
+    }
+    response.json(application);
   } catch (error) {
-    console.error("Could not read applications:", error);
-    response.status(500).json({
-      message: "Could not load applications",
-    });
+    console.error('Could not edit application:', error);
+    response.status(500).json({ message: 'Could not save application details' });
   }
 });
 
