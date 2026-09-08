@@ -1,8 +1,8 @@
-import './App.css'
 import { useState, useEffect } from 'react'
 import type { ApplicationStatus, JobApplication, NewApplication } from './types'
 import ApplicationItem from './components/ApplicationItem'
 import ApplicationForm from './components/ApplicationForm'
+import FormDialog from './components/FormDialog'
 import { fetchApplications } from './api'
 
 function App() {
@@ -11,6 +11,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [isAdding, setIsAdding] = useState(false)
+  const [notice, setNotice] = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [updatingId, setUpdatingId] = useState<number | null>(null)
   const [statusError, setStatusError] = useState('')
@@ -18,7 +20,8 @@ function App() {
   const [loadError, setLoadError] = useState('')
   const isBusy = isLoading || isSaving || deletingId !== null || updatingId !== null
   const editingApplication = applications.find(application => application.id === editingId)
-  const emptyMessage = "No applications found for the selected status."
+  const isFormOpen = isAdding || editingId !== null
+  const closeForm = () => { setIsAdding(false); setEditingId(null) }
   const filteredJobs = applications.filter(job => statusFilter === 'All' || job.status === statusFilter)
 
   useEffect(() => {
@@ -65,6 +68,8 @@ function App() {
 
       const application: JobApplication = await response.json()
       setApplications(currentApplications => [...currentApplications, application])
+      setIsAdding(false)
+      setNotice('Application added. ' + (statusFilter !== 'All' && statusFilter !== 'Applied' ? 'Choose All or Applied to see it.' : ''))
     } finally {
       // Let failures reach the form so it can preserve the inputs and show an error.
       setIsSaving(false)
@@ -94,6 +99,7 @@ function App() {
       setApplications(currentApplications =>
         currentApplications.filter(job => job.id !== id)
       )
+      setNotice('Application deleted.')
     } catch (error) {
       console.error('Could not delete application:', error)
       setDeleteError('Could not delete the application. Please try again.')
@@ -121,6 +127,7 @@ function App() {
       const application: JobApplication = await response.json()
       setApplications(currentApplications => currentApplications.map(job => job.id === id ? application : job))
       setEditingId(null)
+      setNotice('Changes saved.')
     } catch (error) {
       if (error instanceof TypeError) {
         throw new Error('Could not reach the server. Your draft is still here; please try again.', { cause: error })
@@ -156,6 +163,7 @@ function App() {
       setApplications(currentApplications =>
         currentApplications.map(job => job.id === id ? application : job)
       )
+      setNotice('Status updated.')
     } catch (error) {
       console.error('Could not update application status:', error)
       setStatusError('Could not update the status. Please try again.')
@@ -182,54 +190,94 @@ function App() {
   }
 
   return (
-    <>
-      <section>
-        <div>
-          <h1>Job Application Manager</h1>
-          <button type="button" onClick={loadApplications} disabled={isBusy || editingId !== null}>
-            {isLoading ? 'Loading…' : 'Load applications from server'}
-          </button>
-          {loadError && <p role="alert">{loadError}</p>}
-          <h2>Showing {filteredJobs.length} out of {applications.length} applications</h2>
-          <ApplicationForm
-            key={editingId === null ? 'new' : `edit-${editingId}`}
+    <div className="min-h-screen bg-slate-100">
+      <header className="border-b border-slate-800 bg-slate-950 text-white">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-5 py-4 sm:px-8">
+          <div className="flex items-center gap-3">
+            <span className="text-base font-semibold tracking-tight">Jake's Application Manager</span>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-[1600px] px-4 py-8 sm:px-8 sm:py-10">
+        <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="mb-2 text-xs font-semibold tracking-widest text-slate-500 uppercase">Job search</p>
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-950">Applications</h1>
+            <p className="mt-2 text-sm text-slate-500">{isLoading ? 'Loading your applications…' : applications.length + (applications.length === 1 ? ' application tracked' : ' applications tracked')}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={loadApplications} disabled={isBusy || isFormOpen}
+              className="min-h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-40">
+              {isLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <button type="button" onClick={() => { setNotice(''); setIsAdding(true) }} disabled={isBusy || isFormOpen}
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-xs hover:bg-blue-700 disabled:opacity-40">
+              <span aria-hidden="true" className="text-lg leading-none">+</span> Add application
+            </button>
+          </div>
+        </div>
+
+        {notice && <div role="status" className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {notice}
+          <button type="button" onClick={() => setNotice('')} aria-label="Dismiss notification" className="rounded px-2 py-1 text-emerald-800 hover:bg-emerald-100">×</button>
+        </div>}
+        {[loadError, deleteError, statusError].filter(Boolean).map((message, index) => (
+          <p key={index} role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">{message}</p>
+        ))}
+
+        <section aria-label="Application tracker" className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-4 sm:px-5">
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Filter applications by status">
+              {(['All', 'Applied', 'Interview', 'Offer', 'Rejected'] as const).map(status => {
+                const count = status === 'All' ? applications.length : applications.filter(job => job.status === status).length
+                return <button key={status} type="button" aria-pressed={statusFilter === status} onClick={() => setStatusFilter(status)}
+                  className={'inline-flex min-h-9 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors ' + (statusFilter === status ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100')}>
+                  {status}
+                  <span className={'rounded px-1.5 text-xs tabular-nums ' + (statusFilter === status ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-500')}>{count}</span>
+                </button>
+              })}
+            </div>
+            <span className="text-sm text-slate-500">{filteredJobs.length} of {applications.length} shown</span>
+          </div>
+
+          <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Scrollable applications table">
+            <table className="w-full min-w-[1280px] border-collapse text-left text-base">
+              <caption className="sr-only">Job applications with location, status, dates, job links, notes, and editing actions</caption>
+              <thead className="border-b border-slate-200 bg-slate-50 text-sm font-medium text-slate-500">
+                <tr>
+                  {['Company', 'Position', 'Location', 'Status', 'Date applied', 'Date updated', 'Job posting', 'Notes', 'Actions'].map(label => (
+                    <th key={label} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredJobs.map(item => (
+                  <ApplicationItem key={item.id} application={item}
+                    onStatusChange={handleStatusChange} onDelete={handleDeleteApplication}
+                    onEdit={(id) => { setNotice(''); setEditingId(id) }}
+                    disabled={isBusy || isFormOpen} isDeleting={deletingId === item.id} isUpdating={updatingId === item.id} />
+                ))}
+                {isLoading && applications.length === 0 && <tr><td colSpan={9} className="px-6 py-16 text-center text-slate-500"><span role="status">Loading applications…</span></td></tr>}
+                {!isLoading && !loadError && filteredJobs.length === 0 && <tr><td colSpan={9} className="px-6 py-16 text-center">
+                  <p className="font-semibold text-slate-800">{applications.length === 0 ? 'No applications yet' : 'No ' + statusFilter.toLowerCase() + ' applications'}</p>
+                  <p className="mt-2 text-sm text-slate-500">{applications.length === 0 ? 'Add your first application to start tracking your search.' : 'Choose another status to see more applications.'}</p>
+                </td></tr>}
+                {!isLoading && loadError && applications.length === 0 && <tr><td colSpan={9} className="px-6 py-16 text-center text-slate-500">Applications could not be loaded. Use Refresh to try again.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <div className="border-t border-slate-200 bg-slate-50/50 px-5 py-3 text-xs text-slate-500">Dates are displayed in local time.<span className="ml-2 lg:hidden">Scroll horizontally to see all columns.</span></div>
+        </section>
+
+        {isFormOpen && <FormDialog busy={isBusy} onClose={closeForm}>
+          <ApplicationForm key={editingId === null ? 'new' : 'edit-' + editingId}
             initialValues={editingApplication}
             onSave={editingId === null ? handleAddApplication : handleEditApplication}
-            onCancel={editingId === null ? undefined : () => setEditingId(null)}
-            isSaving={isSaving}
-            disabled={isBusy}
-          />
-
-          <label htmlFor="status-filter">Filter by status </label>
-          <select id="status-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as ApplicationStatus | 'All')}>
-            <option value="All">All</option>
-            <option value="Applied">Applied</option>
-            <option value="Interview">Interview</option>
-            <option value="Rejected">Rejected</option>
-            <option value="Offer">Offer</option>
-          </select>
-          {deleteError && <p role="alert">{deleteError}</p>}
-          {statusError && <p role="alert">{statusError}</p>}
-          <ul>
-            {filteredJobs.map(item => (
-              <ApplicationItem
-                key={item.id}
-                application={item}
-                onStatusChange={handleStatusChange}
-                onDelete={handleDeleteApplication}
-                onEdit={setEditingId}
-                disabled={isBusy || editingId !== null}
-                isDeleting={deletingId === item.id}
-                isUpdating={updatingId === item.id}
-              />
-            ))}
-          </ul>
-          {!isLoading && !loadError && filteredJobs.length === 0 && (
-            <p>{emptyMessage}</p>
-          )}
-        </div>
-      </section>
-    </>
+            onCancel={closeForm} isSaving={isSaving} disabled={isBusy} />
+        </FormDialog>}
+      </main>
+    </div>
   )
 }
 

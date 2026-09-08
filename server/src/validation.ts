@@ -18,7 +18,10 @@ export function parseApplicationInput(body: unknown): { data: ApplicationInput; 
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     return { error: 'An application object is required' };
   }
-  const { company, position, jobUrl, dateApplied, notes } = body as Record<string, unknown>;
+  const { company, position, jobUrl, dateApplied, notes, location } = body as Record<string, unknown>;
+  if (location != null && location !== '' && location !== 'In-office' && location !== 'Hybrid' && location !== 'Remote') {
+    return { error: 'Location must be In-office, Hybrid, or Remote' };
+  }
   if (typeof company !== 'string' || typeof position !== 'string' || !company.trim() || !position.trim()) {
     return { error: 'Company and position must be non-empty strings' };
   }
@@ -32,6 +35,7 @@ export function parseApplicationInput(body: unknown): { data: ApplicationInput; 
     return { error: 'Notes must be text' };
   }
   return { data: {
+    location: location === 'In-office' || location === 'Hybrid' || location === 'Remote' ? location : null,
     company: company.trim(),
     position: position.trim(),
     jobUrl: typeof jobUrl === 'string' ? jobUrl.trim() || null : null,
