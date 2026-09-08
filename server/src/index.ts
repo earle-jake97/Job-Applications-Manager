@@ -1,9 +1,9 @@
 import express from "express";
+import { parseListQuery, queryApplications } from './application-query.js';
 import { parseApplicationInput } from "./validation.js";
 import {
   createApplication,
   deleteApplication,
-  listApplications,
   updateApplicationStatus,
   updateApplicationDetails,
 } from "./applications.js";
@@ -16,9 +16,12 @@ app.get("/api/health", (_request, response) => {
   response.json({ status: "ok", application: "application-manager" });
 });
 
-app.get("/api/applications", async (_request, response) => {
+app.get("/api/applications", async (request, response) => {
+  let query;
+  try { query = parseListQuery(request.query); }
+  catch { response.status(400).json({ message: 'Invalid application list query' }); return; }
   try {
-    response.json(await listApplications());
+    response.json(await queryApplications(query));
   } catch (error) {
     console.error("Could not read applications:", error);
     response.status(500).json({ message: "Could not load applications" });

@@ -2,6 +2,18 @@
 
 A personal job application tracker built with React, TypeScript, Tailwind, Express, and PostgreSQL.
 
+## Searching and browsing applications
+
+Enter a company, position, or note fragment and press Search (or Enter). Search is case-insensitive and treats `%` and `_` as literal characters. Combine it with a status filter and browse 10, 25, or 50 rows per page. Click Company, Position, Location, Status, Date applied, or Date updated to sort ascending; click the same header again to toggle direction. An arrow marks the active sort. Selecting a different column starts ascending, and sorting returns to page one. Missing dates/locations sort last. Status badge counts always refer to the whole collection; the matching count refers to the active search and status.
+
+The API now returns a page object instead of a bare array. For example, `GET /api/applications?search=engineer&status=Applied&sort=dateApplied&direction=desc&page=1&pageSize=10` returns `items`, `total`, `page`, `pageSize`, `totalPages`, and `counts`. PostgreSQL filters and sorts before applying the page limit. Invalid query parameters return HTTP 400. Pages beyond the final page are clamped, including after a deletion. Restart the backend after updating to this version.
+
+## Automated checks
+
+`.github/workflows/checks.yml` runs on pushes and pull requests, and can be started manually from GitHub's Actions tab once pushed. The frontend job installs dependencies, runs ESLint, and builds the app. The backend job builds TypeScript and runs integration tests using a temporary PostgreSQL 18 service. Its password is a disposable test credential; it does not use your local `.env` or personal application database.
+
+Run the equivalent checks locally with `npm run lint` and `npm run build` in `client`, and `npm run test:db` in `server`. Tests create and remove their own temporary schemas/databases. The workflow reports failures but does not deploy the app or enforce branch protection.
+
 ## Everyday use on Windows
 
 Double-click **Launch Application Manager.cmd**. You can also create a desktop shortcut to this file using Windows Explorer.
