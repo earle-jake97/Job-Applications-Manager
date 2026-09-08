@@ -21,6 +21,7 @@ test('migration preserves existing rows; details and update timestamps persist',
     await admin.query(await readFile(new URL('../sql/001_create_applications.sql', import.meta.url), 'utf8'))
     await admin.query("INSERT INTO applications (company, position) VALUES ('Existing record', 'Engineer')")
     await admin.query(await readFile(new URL('../sql/002_application_details.sql', import.meta.url), 'utf8'))
+    await admin.query(await readFile(new URL('../sql/003_application_location.sql', import.meta.url), 'utf8'))
 
     // The repository pool connects only to this test's newly created schema.
     process.env.PGOPTIONS = `-c search_path=${schema}`
@@ -34,8 +35,10 @@ test('migration preserves existing rows; details and update timestamps persist',
     assert.equal(existing.updatedAt, null)
     assert.equal(existing.jobUrl, null)
     assert.equal(existing.notes, '')
+    assert.equal(existing.location, null)
 
     const details = {
+      location: 'Remote',
       dateApplied: '2024-02-29',
       jobUrl: 'https://example.com/jobs/123',
       notes: "Recruiter's notes\nFollow up next week",
@@ -48,6 +51,7 @@ test('migration preserves existing rows; details and update timestamps persist',
     assert.equal(created.dateApplied, details.dateApplied)
     assert.equal(created.jobUrl, details.jobUrl)
     assert.equal(created.notes, details.notes)
+    assert.equal(created.location, 'Remote')
     assert.ok(created.updatedAt instanceof Date)
 
     const listed = await listApplications()
@@ -71,6 +75,7 @@ test('migration preserves existing rows; details and update timestamps persist',
     assert.equal(updatedExisting.dateApplied, null)
 
     const editedDetails = {
+      location: 'Hybrid',
       company: "Edited O'Brien Corp",
       position: 'Senior Engineer',
       jobUrl: 'https://example.com/new-job',
@@ -89,13 +94,20 @@ test('migration preserves existing rows; details and update timestamps persist',
 
     const sameDetails = await updateApplicationDetails(applicationId, editedDetails)
     assert.deepEqual(sameDetails.updatedAt, edited.updatedAt)
+    await admin.query('SELECT pg_sleep(0.01)')
+    const locationOnly = await updateApplicationDetails(applicationId, { ...editedDetails, location: 'In-office' })
+    assert.equal(locationOnly.location, 'In-office')
+    assert.ok(locationOnly.updatedAt.getTime() > edited.updatedAt.getTime())
+    await assert.rejects(admin.query('UPDATE applications SET location = $1 WHERE id = $2', ['Anywhere', applicationId]), { code: '23514' })
+    assert.equal((await listApplications()).find(job => job.id === applicationId).location, 'In-office')
     const cleared = await updateApplicationDetails(applicationId, {
-      ...editedDetails, jobUrl: null, dateApplied: null, notes: '',
+      ...editedDetails, jobUrl: null, dateApplied: null, notes: '', location: null,
     })
     assert.equal(cleared.jobUrl, null)
     assert.equal(cleared.dateApplied, null)
     assert.equal(cleared.notes, '')
     assert.equal(cleared.status, 'Offer')
+    assert.equal(cleared.location, null)
 
     await assert.rejects(
       updateApplicationStatus(applicationId, 'Banana'),
@@ -139,13 +151,16 @@ test('calendar date and web URL validation', () => {
 test('add and edit input validation trims fields and allows clearing optional values', () => {
   const input = { company: ' Example ', position: ' Engineer ', jobUrl: '', dateApplied: '', notes: ' ' }
   assert.deepEqual(parseApplicationInput(input).data, {
-    company: 'Example', position: 'Engineer', jobUrl: null, dateApplied: null, notes: '',
+    company: 'Example', position: 'Engineer', jobUrl: null, dateApplied: null, notes: '', location: null,
   })
   for (const body of [null, [], 'text', { ...input, company: ' ' },
     { ...input, jobUrl: 'javascript:alert(1)' }, { ...input, dateApplied: '2026-02-30' },
-    { ...input, notes: 3 }]) {
+    { ...input, notes: 3 }, { ...input, location: 'Anywhere' }, { ...input, location: 3 }]) {
     assert.ok(parseApplicationInput(body).error)
   }
   assert.equal(parseApplicationInput({ ...input, updatedAt: 'fake', status: 'Offer' }).data.status, undefined)
   assert.equal(parseApplicationInput({ ...input, updatedAt: 'fake' }).data.updatedAt, undefined)
+  for (const location of ['In-office', 'Hybrid', 'Remote', null]) {
+    assert.equal(parseApplicationInput({ ...input, location }).data.location, location)
+  }
 })

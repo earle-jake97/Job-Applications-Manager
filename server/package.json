@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:db": "npm run build && node --env-file=.env --test tests/applications.test.mjs",
+    "db:setup": "node --env-file=.env --import tsx src/setup-db.ts",
+    "test:db": "npm run build && node --env-file=.env --test tests/*.test.mjs",
     "db:check": "node --env-file=.env --import tsx src/check-db.ts",
     "dev": "node --env-file=.env --import tsx --watch src/index.ts",
     "typecheck": "tsc --noEmit",

@@ -13,7 +13,7 @@ app.use(express.json());
 const port = 3001;
 
 app.get("/api/health", (_request, response) => {
-  response.json({ status: "ok" });
+  response.json({ status: "ok", application: "application-manager" });
 });
 
 app.get("/api/applications", async (_request, response) => {
